@@ -76,7 +76,6 @@ def fetch(filename, nevents):
                     num_samples = wave_desc['wave_array_count']
                     if current_dim[channel] < num_samples:
                         current_dim[channel] = num_samples
-                        print '\rresizing channel %i data...' % channel,
                         f['c%i_samples'%channel].resize(current_dim[channel],1)
                     f['c%i_samples'%channel][i] =numpy.append(wave_array,numpy.zeros((current_dim[channel]-num_samples,),dtype=wave_array.dtype))
                     f['c%i_num_samples'%channel][i] = num_samples
