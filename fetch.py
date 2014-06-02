@@ -27,13 +27,14 @@ import struct
 import socket
 import h5py
 import numpy
+import config
 from lecroy import LeCroyScope
 
 def fetch(filename, nevents):
     '''
     Fetch and save waveform traces from the oscilloscope.
     '''
-    scope = LeCroyScope('131.243.31.120', timeout=2000.0)
+    scope = LeCroyScope(config.ip, timeout=config.timeout)
     scope.clear()
     channels = scope.get_channels()
     settings = scope.get_settings()
