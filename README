@@ -1,0 +1,10 @@
+LeCrunch2 is based on LeCrunch by Anthony LaTorre <tlatorre9@gmail.com>
+
+LeCrunch2 will capture traces and settings from a LeCroy oscilloscope and
+save them to an HDF5 file for later processing. It also contains a simple 
+command line interface to communicated directly with the scope for manual
+configuration or protocol inspection.
+
+Features to add:
+- Sequence mode capture for high speed acquisition
+- Easy ability to restore previous settings to the scope
