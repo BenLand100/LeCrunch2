@@ -29,7 +29,7 @@ import h5py
 import numpy
 from lecroy import LeCroyScope
 
-def fetch(filename, nevents, maxsamples=1000):
+def fetch(filename, nevents):
     '''
     Fetch and save waveform traces from the oscilloscope.
     '''
@@ -46,9 +46,11 @@ def fetch(filename, nevents, maxsamples=1000):
     f = h5py.File(filename, 'w')
     for command, setting in settings.items():
         f.attrs[command] = setting
+    current_dim = {}
     for channel in channels:
-        wave_desc,wave_array = scope.get_waveform(channel)
-        f.create_dataset("c%i_samples"%channel, (nevents,maxsamples), dtype=wave_desc['dtype'], compression='gzip')
+        wave_desc = scope.get_wavedesc(channel)
+        current_dim[channel] = wave_desc['wave_array_count']
+        f.create_dataset("c%i_samples"%channel, (nevents,current_dim[channel]), dtype=wave_desc['dtype'], compression='gzip', maxshape=(nevents,None))
         for key, value in wave_desc.items():
             try:
                 f["c%i_samples"%channel].attrs[key] = value
@@ -71,7 +73,11 @@ def fetch(filename, nevents, maxsamples=1000):
                 for channel in channels:
                     wave_desc,wave_array = scope.get_waveform(channel)
                     num_samples = wave_desc['wave_array_count']
-                    f['c%i_samples'%channel][i] =numpy.append(wave_array,numpy.zeros((maxsamples-num_samples,),dtype=wave_array.dtype))
+                    if current_dim[channel] < num_samples:
+                        current_dim[channel] = num_samples
+                        print '\rresizing channel %i data...' % channel,
+                        f['c%i_samples'%channel].resize(current_dim[channel],1)
+                    f['c%i_samples'%channel][i] =numpy.append(wave_array,numpy.zeros((current_dim[channel]-num_samples,),dtype=wave_array.dtype))
                     f['c%i_num_samples'%channel][i] = num_samples
                     f['c%i_vert_offset'%channel][i] = wave_desc['vertical_offset']
                     f['c%i_vert_scale'%channel][i] = wave_desc['vertical_gain']
