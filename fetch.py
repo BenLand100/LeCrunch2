@@ -95,7 +95,7 @@ def fetch(filename, nevents, nsequence):
                 print '\n' + str(e)
                 scope.clear()
                 continue
-            i += 1
+            i += sequence_count
     except KeyboardInterrupt:
         print '\rUser interrupted fetch early'
     finally:
