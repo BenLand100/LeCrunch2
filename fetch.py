@@ -54,7 +54,6 @@ def fetch(filename, nevents, nsequence):
     for command, setting in settings.items():
         f.attrs[command] = setting
     current_dim = {}
-    sets = {}
     for channel in channels:
         wave_desc = scope.get_wavedesc(channel)
         current_dim[channel] = wave_desc['wave_array_count']//sequence_count
@@ -69,7 +68,6 @@ def fetch(filename, nevents, nsequence):
         f.create_dataset("c%i_horiz_offset"%channel, (nevents,), dtype='f8')
         f.create_dataset("c%i_horiz_scale"%channel, (nevents,), dtype='f8')
         f.create_dataset("c%i_num_samples"%channel, (nevents,), dtype='f8')
-        sets[channel] = ('c%i_samples'%channel,'c%i_num_samples'%channel,'c%i_vert_offset'%channel,'c%i_vert_scale'%channel,'c%i_horiz_offset'%channel,'c%i_horiz_scale'%channel)
         
     try:
         i = 0
@@ -86,12 +84,12 @@ def fetch(filename, nevents, nsequence):
                         f['c%i_samples'%channel].resize(current_dim[channel],1)
                     traces = wave_array.reshape(sequence_count, wave_array.size//sequence_count)
                     for n in xrange(0,sequence_count):
-                        f[sets[channel][0]][i+n] = numpy.append(traces[n],numpy.zeros((current_dim[channel]-num_samples,),dtype=wave_array.dtype))
-                        f[sets[channel][1]][i+n] = num_samples
-                        f[sets[channel][2]][i+n] = wave_desc['vertical_offset']
-                        f[sets[channel][3]][i+n] = wave_desc['vertical_gain']
-                        f[sets[channel][4]][i+n] = -wave_desc['horiz_offset']
-                        f[sets[channel][5]][i+n] = wave_desc['horiz_interval']
+                        f['c%i_samples'%channel][i+n][0:num_samples] = traces[n]
+                        f['c%i_num_samples'%channel][i+n] = num_samples
+                        f['c%i_vert_offset'%channel][i+n] = wave_desc['vertical_offset']
+                        f['c%i_vert_scale'%channel][i+n] = wave_desc['vertical_gain']
+                        f['c%i_horiz_offset'%channel][i+n] = -wave_desc['horiz_offset']
+                        f['c%i_horiz_scale'%channel][i+n] = wave_desc['horiz_interval']
                     
             except (socket.error, struct.error) as e:
                 print '\n' + str(e)
