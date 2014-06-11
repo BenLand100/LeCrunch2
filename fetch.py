@@ -83,8 +83,10 @@ def fetch(filename, nevents, nsequence):
                         current_dim[channel] = num_samples
                         f['c%i_samples'%channel].resize(current_dim[channel],1)
                     traces = wave_array.reshape(sequence_count, wave_array.size//sequence_count)
+                    scratch = numpy.zeros(current_dim[channel],dtype=wave_desc.dtype)
                     for n in xrange(0,sequence_count):
-                        f['c%i_samples'%channel][i+n][0:num_samples] = traces[n]
+                        scratch[0:num_samples] = traces[n] #necessary because h5py does not like indexing
+                        f['c%i_samples'%channel][i+n][0:num_samples] = scratch
                         f['c%i_num_samples'%channel][i+n] = num_samples
                         f['c%i_vert_offset'%channel][i+n] = wave_desc['vertical_offset']
                         f['c%i_vert_scale'%channel][i+n] = wave_desc['vertical_gain']
