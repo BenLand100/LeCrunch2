@@ -262,6 +262,15 @@ class LeCroyScope(object):
         further commands, i.e. nonblocking.
         '''
         self.send('arm;wait')
+        
+    def set_sequence_mode(self, nsequence):
+        '''
+        Sets the scope to use sequence mode for aquisition.
+        '''
+        if nsequence == 1:
+            self.send('seq off')
+        else:
+            self.send('seq on,%i'%nsequence)
 
     def get_wavedesc(self, channel):
         '''

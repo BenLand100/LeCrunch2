@@ -30,19 +30,25 @@ import numpy
 import config
 from lecroy import LeCroyScope
 
-def fetch(filename, nevents):
+def fetch(filename, nevents, nsequence):
     '''
     Fetch and save waveform traces from the oscilloscope.
     '''
     scope = LeCroyScope(config.ip, timeout=config.timeout)
     scope.clear()
+    scope.set_sequence_mode(nsequence)
     channels = scope.get_channels()
     settings = scope.get_settings()
 
     if 'ON' in settings['SEQUENCE']:
         sequence_count = int(settings['SEQUENCE'].split(',')[1])
-        if sequence_count != 1:
-            raise Exception('sequence count must be 1 (for now).')
+    else:
+        sequence_count = 1
+        
+    if nsequence != sequence_count:
+        print 'Could not configure sequence mode properly'
+    if sequence_count != 1:
+        print 'Using sequence mode with %i traces per aquisition' % sequence_count 
     
     f = h5py.File(filename, 'w')
     for command, setting in settings.items():
@@ -50,7 +56,7 @@ def fetch(filename, nevents):
     current_dim = {}
     for channel in channels:
         wave_desc = scope.get_wavedesc(channel)
-        current_dim[channel] = wave_desc['wave_array_count']
+        current_dim[channel] = wave_desc['wave_array_count']//sequence_count
         f.create_dataset("c%i_samples"%channel, (nevents,current_dim[channel]), dtype=wave_desc['dtype'], compression='gzip', maxshape=(nevents,None))
         for key, value in wave_desc.items():
             try:
@@ -63,7 +69,6 @@ def fetch(filename, nevents):
         f.create_dataset("c%i_horiz_scale"%channel, (nevents,), dtype='f8')
         f.create_dataset("c%i_num_samples"%channel, (nevents,), dtype='f8')
         
-    start = time.time()
     try:
         i = 0
         while i < nevents:
@@ -73,43 +78,41 @@ def fetch(filename, nevents):
                 scope.trigger()
                 for channel in channels:
                     wave_desc,wave_array = scope.get_waveform(channel)
-                    num_samples = wave_desc['wave_array_count']
+                    num_samples = wave_desc['wave_array_count']//sequence_count
                     if current_dim[channel] < num_samples:
                         current_dim[channel] = num_samples
                         f['c%i_samples'%channel].resize(current_dim[channel],1)
-                    f['c%i_samples'%channel][i] =numpy.append(wave_array,numpy.zeros((current_dim[channel]-num_samples,),dtype=wave_array.dtype))
-                    f['c%i_num_samples'%channel][i] = num_samples
-                    f['c%i_vert_offset'%channel][i] = wave_desc['vertical_offset']
-                    f['c%i_vert_scale'%channel][i] = wave_desc['vertical_gain']
-                    f['c%i_horiz_offset'%channel][i] = -wave_desc['horiz_offset']
-                    f['c%i_horiz_scale'%channel][i] = wave_desc['horiz_interval']
+                    traces = wave_array.reshape(sequence_count, wave_array.size//sequence_count)
+                    for n in xrange(0,sequence_count):
+                        f['c%i_samples'%channel][i+n] = numpy.append(traces[n],numpy.zeros((current_dim[channel]-num_samples,),dtype=wave_array.dtype))
+                        f['c%i_num_samples'%channel][i+n] = num_samples
+                        f['c%i_vert_offset'%channel][i+n] = wave_desc['vertical_offset']
+                        f['c%i_vert_scale'%channel][i+n] = wave_desc['vertical_gain']
+                        f['c%i_horiz_offset'%channel][i+n] = -wave_desc['horiz_offset']
+                        f['c%i_horiz_scale'%channel][i+n] = wave_desc['horiz_interval']
                     
             except (socket.error, struct.error) as e:
                 print '\n' + str(e)
                 scope.clear()
                 continue
             i += 1
+    except KeyboardInterrupt:
+        print '\rUser interrupted fetch early'
     finally:
-        print '\r'
+        print '\r', 
         f.close()
         scope.clear()
-
-        elapsed = time.time() - start
-
-        if i > 0:
-            print 'Completed %i events in %.3f seconds.' % (i, elapsed)
-            print 'Averaged %.5f seconds per acquisition.' % (elapsed/i)
-            print "Wrote to file '%s'." % filename
+        return i
 
 if __name__ == '__main__':
     import optparse
 
-    usage = "usage: %prog <filename/prefix> [-n] [-r]"
+    usage = "usage: %prog <filename/prefix> [-n] [-s]"
     parser = optparse.OptionParser(usage, version="%prog 0.1.0")
     parser.add_option("-n", type="int", dest="nevents",
-                      help="number of events to store per run", default=1000)
-    parser.add_option("-r", type="int", dest="nruns",
-                      help="number of runs", default=1)
+                      help="number of events to capture in total", default=1000)
+    parser.add_option("-s", type="int", dest="nsequence",
+                      help="number of sequential events to capture at a time", default=1)
     parser.add_option("--time", action="store_true", dest="time",
                       help="append time string to filename", default=False)
     (options, args) = parser.parse_args()
@@ -117,26 +120,15 @@ if __name__ == '__main__':
     if len(args) < 1:
         sys.exit(parser.format_help())
     
-    if options.nevents < 1 or options.nruns < 1:
-        sys.exit("Please specify a number >= 1 for number of events/runs")
+    if options.nevents < 1 or options.nsequence < 1:
+        sys.exit("Arguments to -s or -n must be positive")
+    
+    filename = args[0] + '_' + string.replace(time.asctime(time.localtime()), ' ', '-') + '.h5' if options.time else args[0] + '.h5'
+    print 'Saving to file %s' % filename
 
-    if options.nruns == 1 and not options.time:
-        try:
-            fetch(args[0], options.nevents)
-        except KeyboardInterrupt:
-            pass
-    else:
-        import time
-        import string
-
-        for i in range(options.nruns):
-            timestr = string.replace(time.asctime(time.localtime()), ' ', '-')
-            filename = args[0] + '_' + timestr + '.h5'
-            print '-' * 65
-            print 'Saving to file %s' % filename
-            print '-' * 65
-
-            try:
-                fetch(filename, options.nevents)
-            except KeyboardInterrupt:
-                break
+    start = time.time()
+    count = fetch(filename, options.nevents, options.nsequence)
+    elapsed = time.time() - start
+    if count > 0:
+        print 'Completed %i events in %.3f seconds.' % (count, elapsed)
+        print 'Averaged %.5f seconds per acquisition.' % (elapsed/count)
