@@ -315,9 +315,9 @@ class LeCroyScope(object):
 
         # determine data type
         if wavedesc['comm_type'] == 0:
-            wavedesc['dtype'] = np.int8
+            wavedesc['dtype'] = np.int8()
         elif wavedesc['comm_type'] == 1:
-            wavedesc['dtype'] = np.int16
+            wavedesc['dtype'] = np.int16()
         else:
             raise Exception('unknown comm_type.')
         return wavedesc

@@ -51,25 +51,10 @@ def fetch(filename, nevents, nsequence):
     if sequence_count != 1:
         print 'Using sequence mode with %i traces per aquisition' % sequence_count 
     
-    f = h5py.File(filename, 'w')
-    for command, setting in settings.items():
-        f.attrs[command] = setting
-    current_dim = {}
+    f = {}
     for channel in channels:
-        wave_desc = scope.get_wavedesc(channel)
-        current_dim[channel] = wave_desc['wave_array_count']//sequence_count
-        f.create_dataset("c%i_samples"%channel, (nevents,current_dim[channel]), dtype=wave_desc['dtype'], compression='gzip', maxshape=(nevents,None))
-        for key, value in wave_desc.items():
-            try:
-                f["c%i_samples"%channel].attrs[key] = value
-            except ValueError:
-                pass
-        f.create_dataset("c%i_vert_offset"%channel, (nevents,), dtype='f8')
-        f.create_dataset("c%i_vert_scale"%channel, (nevents,), dtype='f8')
-        f.create_dataset("c%i_horiz_offset"%channel, (nevents,), dtype='f8')
-        f.create_dataset("c%i_horiz_scale"%channel, (nevents,), dtype='f8')
-        f.create_dataset("c%i_num_samples"%channel, (nevents,), dtype='f8')
-        
+        f[channel] = open('%s.ch%s.traces'%(filename,channel),'wb')
+    params_pattern = '=IBdddd' # (num_samples, sample_bytes, v_off, v_scale, h_off, h_scale, [samples]) ...
     try:
         i = 0
         while i < nevents:
@@ -80,31 +65,25 @@ def fetch(filename, nevents, nsequence):
                 for channel in channels:
                     wave_desc,wave_array = scope.get_waveform(channel)
                     num_samples = wave_desc['wave_array_count']//sequence_count
-                    if current_dim[channel] < num_samples:
-                        current_dim[channel] = num_samples
-                        f['c%i_samples'%channel].resize(current_dim[channel],1)
                     traces = wave_array.reshape(sequence_count, wave_array.size//sequence_count)
-                    #necessary because h5py does not like indexing and this is the fastest (and man is it slow) way
-                    scratch = numpy.zeros((current_dim[channel],),dtype=wave_array.dtype)
+                    out = f[channel]
                     for n in xrange(0,sequence_count):
-                        scratch[0:num_samples] = traces[n] #'fast' copy to right size
-                        f['c%i_samples'%channel][i+n] = scratch #'fast' add to dataset
-                        f['c%i_num_samples'%channel][i+n] = num_samples
-                        f['c%i_vert_offset'%channel][i+n] = wave_desc['vertical_offset']
-                        f['c%i_vert_scale'%channel][i+n] = wave_desc['vertical_gain']
-                        f['c%i_horiz_offset'%channel][i+n] = -wave_desc['horiz_offset']
-                        f['c%i_horiz_scale'%channel][i+n] = wave_desc['horiz_interval']
+                        out.write(struct.pack(params_pattern,num_samples,wave_desc['dtype'].itemsize,wave_desc['vertical_offset'], wave_desc['vertical_gain'], -wave_desc['horiz_offset'], wave_desc['horiz_interval']))
+                        traces[n].tofile(out)
                     
-            except (socket.error, struct.error) as e:
+            except (socket.error) as e:
                 print '\n' + str(e)
                 scope.clear()
                 continue
             i += sequence_count
     except KeyboardInterrupt:
         print '\rUser interrupted fetch early'
+    except Exception as e:
+        print "\rUnexpected error:", e
     finally:
         print '\r', 
-        f.close()
+        for channel in channels:
+            f[channel].close()
         scope.clear()
         return i
 
@@ -127,7 +106,7 @@ if __name__ == '__main__':
     if options.nevents < 1 or options.nsequence < 1:
         sys.exit("Arguments to -s or -n must be positive")
     
-    filename = args[0] + '_' + string.replace(time.asctime(time.localtime()), ' ', '-') + '.h5' if options.time else args[0] + '.h5'
+    filename = args[0] + '_' + string.replace(time.asctime(time.localtime()), ' ', '-') if options.time else args[0]
     print 'Saving to file %s' % filename
 
     start = time.time()
